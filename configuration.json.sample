@@ -1,0 +1,20 @@
+{
+    "prefix": "collectdmqtt_",
+    "mappings": {
+        "memory.memory": {
+            "name": "memory"
+        },
+        "cpu.cpu": {
+            "name": "cpu"
+        },
+        "df.df_complex": {
+            "name": "df",
+            "instances": [
+                "root"
+            ]
+        },
+        "disk.disk": {
+            "name": "disk"
+        }
+    }
+}

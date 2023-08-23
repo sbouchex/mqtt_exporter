@@ -1,0 +1,11 @@
+{
+    "config": {
+        "ListeningAddress": ":9393",
+        "metricsPath": "/metrics",
+        "configurationFile": "configuration.json"
+    },
+    "mqtt": {
+        "broker": "tcp://<HOST>:1883"
+        "topic: "/collectd/#"
+    }
+}
