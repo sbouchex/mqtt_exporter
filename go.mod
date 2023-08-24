@@ -1,6 +1,6 @@
 module mqtt_exporter
 
-go 1.19
+go 1.20
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.4.3

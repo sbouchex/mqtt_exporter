@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -43,8 +42,10 @@ type ExporterConfig struct {
 }
 
 type ExporterMqttConfig struct {
-	Topic  string `mapstructure:"topic" default:"/mqttexporter/#"`
-	Broker string `mapstructure:"broker" default:"tcp://127.0.0.1:1883"`
+	Topic    string `mapstructure:"topic" default:"/mqttexporter/#"`
+	Broker   string `mapstructure:"broker" default:"tcp://127.0.0.1:1883"`
+	ClientId string `mapstructure:"clientId" default:"mqtt_exporter_client"`
+	Qos      byte   `mapstructure:"qos" default:"1"`
 }
 
 type ExporterConfiguration struct {
@@ -52,19 +53,19 @@ type ExporterConfiguration struct {
 	Mqtt   ExporterMqttConfig `mapstructure:"mqtt"`
 }
 
-type MappingEntry struct {
-	Name      string   `json:"name"`
-	Instances []string `json:"instances"`
-}
-
 type Entity struct {
 	Name        string `json:"group"`
 	LastUpdated string `json:"last_updated"`
 }
 
+type FiltersEntry struct {
+	QueryFilter string `json:"queryFilter"`
+}
+
 type Configuration struct {
-	Mappings map[string]MappingEntry `json:"mappings"`
-	Prefix   string                  `json:"prefix"`
+	Filters     map[string]FiltersEntry `json:"filters"`
+	Prefix      string                  `json:"prefix"`
+	PayloadType string                  `json:"payloadType"`
 }
 
 func metricName(group string, name string) string {
@@ -77,7 +78,7 @@ func metricHelp(group string, name string) string {
 	return fmt.Sprintf("new mqttexporter: Name: '%s_%s'", group, name)
 }
 
-func metricType(m MappingEntry) (prometheus.ValueType, error) {
+func metricType(m FiltersEntry) (prometheus.ValueType, error) {
 	return prometheus.GaugeValue, nil
 }
 
@@ -177,96 +178,8 @@ func parseValue(e string) (float64, error) {
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	var data = msg.Payload()
-	var stData = string(data[:len(data)-1])
-	//	log.Infof("Received message: %s from topic: %s", stData, msg.Topic())
-
-	var partsMessage = strings.Split(stData, ":")
-	if len(partsMessage) > 1 {
-		log.Debugf("Received value: %s from topic: %s", partsMessage[1], msg.Topic())
-
-		var partsTopic = strings.Split(msg.Topic(), "/")
-		if len(partsTopic) > 2 {
-			if partsTopic[0] == "collectd" {
-				var host = partsTopic[1]
-				var groupPart = partsTopic[2]
-				var group = ""
-				var cinstance = ""
-				var indexGroup = strings.Index(groupPart, "-")
-				if indexGroup > 0 {
-					group = groupPart[:indexGroup]
-					cinstance = groupPart[indexGroup+1:]
-				} else {
-					group = groupPart
-				}
-				var namePart = partsTopic[3]
-				var indexName = strings.Index(namePart, "-")
-				var name = ""
-				var index = ""
-				if indexName > 0 {
-					name = namePart[:indexName]
-					index = namePart[indexName+1:]
-				} else {
-
-					name = namePart
-				}
-
-				for vindex, value := range partsMessage {
-					if vindex == 0 {
-						continue
-					}
-					var key = group + "." + name
-					metric, found := configuration.Mappings[key]
-					if found {
-						keep := true
-						var instances = metric.Instances
-						if instances != nil {
-							keep = false
-							for _, instanceI := range instances {
-								if instanceI == cinstance {
-									keep = true
-									break
-								}
-							}
-						}
-						if !keep {
-							return
-						}
-						log.Debugf("Received value: %s for host %s for group %s[%s] and name %s[%s]/%d", value, host, group, cinstance, name, index, vindex)
-						valueF, err := parseValue(value)
-						if err == nil {
-							now := time.Now()
-							lastPush.Set(float64(now.UnixNano()) / 1e9)
-							metricType, err := metricType(metric)
-							if err == nil {
-								labels := prometheus.Labels{}
-								if host != "" {
-									labels["host"] = host
-								}
-								if cinstance != "" {
-									labels["cinstance"] = cinstance
-								}
-								if index != "" {
-									labels["index"] = index
-								}
-								if len(partsMessage) > 2 {
-									labels["vindex"] = fmt.Sprintf("%d", vindex-1)
-								}
-								collector.ch <- &newmqttSample{
-									Id:      metricKey(host, group, name, cinstance, index, vindex),
-									Name:    metricName(group, name),
-									Labels:  labels,
-									Help:    metricHelp(group, name),
-									Value:   valueF,
-									Type:    metricType,
-									Expires: now.Add(time.Duration(300) * time.Second * 2),
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	var stData = string(data[:])
+	log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
 }
 
 var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
@@ -291,7 +204,7 @@ func startExporter() {
 		if config.Config.Verbose {
 			log.Debug(configuration)
 		}
-		log.Infof("Parsing Configuration file: %d entries", len(configuration.Mappings))
+		log.Infof("Parsing Configuration file: %d entries", len(configuration.Filters))
 		defer configurationFile.Close()
 	} else {
 		log.Fatalf("Failed to open configuration file: %s", config.Config.ConfigurationFile)
@@ -304,7 +217,7 @@ func startExporter() {
 	http.Handle(config.Config.MetricsPath, promhttp.Handler())
 
 	opts := mqtt.NewClientOptions()
-	opts.SetClientID("mqtt_exporter_client")
+	opts.SetClientID(config.Mqtt.ClientId)
 	opts.AddBroker(config.Mqtt.Broker)
 	opts.SetDefaultPublishHandler(messagePubHandler)
 	opts.OnConnect = connectHandler
@@ -315,7 +228,7 @@ func startExporter() {
 	}
 	log.Info("Connected to MQTT broker " + config.Mqtt.Broker)
 	topic := config.Mqtt.Topic
-	token := client.Subscribe(topic, 1, nil)
+	token := client.Subscribe(topic, byte(config.Mqtt.Qos), nil)
 	log.Info("Waiting for messages")
 	token.Wait()
 
