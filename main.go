@@ -42,10 +42,9 @@ type ExporterConfig struct {
 }
 
 type ExporterMqttConfig struct {
-	Topic    string `mapstructure:"topic" default:"/mqttexporter/#"`
 	Broker   string `mapstructure:"broker" default:"tcp://127.0.0.1:1883"`
 	ClientId string `mapstructure:"clientId" default:"mqtt_exporter_client"`
-	Qos      byte   `mapstructure:"qos" default:"1"`
+	Qos      byte   `mapstructure:"qos" default:"0"`
 }
 
 type ExporterConfiguration struct {
@@ -60,12 +59,16 @@ type Entity struct {
 
 type FiltersEntry struct {
 	QueryFilter string `json:"queryFilter"`
+	Selector    string `json:"selector"`
+	Extractor   string `json:"extractor"`
+	Qos         byte   `mapstructure:"qos" default:"255"`
 }
 
 type Configuration struct {
 	Filters     map[string]FiltersEntry `json:"filters"`
 	Prefix      string                  `json:"prefix"`
 	PayloadType string                  `json:"payloadType"`
+	Topics      []string                `mapstructure:"topics"`
 }
 
 func metricName(group string, name string) string {
@@ -226,11 +229,13 @@ func startExporter() {
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
+
 	log.Info("Connected to MQTT broker " + config.Mqtt.Broker)
-	topic := config.Mqtt.Topic
-	token := client.Subscribe(topic, byte(config.Mqtt.Qos), nil)
+	for _, v := range configuration.Topics {
+		log.Info("Subscribed to topic " + v)
+		client.Subscribe(v, byte(config.Mqtt.Qos), nil)
+	}
 	log.Info("Waiting for messages")
-	token.Wait()
 
 	http.ListenAndServe(config.Config.ListeningAddress, nil)
 }

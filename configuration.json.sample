@@ -2,8 +2,10 @@
     "prefix": "mqtt_exporter_",
     "payloadType": "jsonTime-Value",
     "filters": {
-        "homeassistant/Toit/.+": {
+        "toit": {
+            "topic": "/collectd/#",
+            "Selector": "homeassistant/Toit/.+",
             "queryFilter": "homeassistant/(L.+)/(L.+)/(L.+)/(N.+)"
-        }
+        },
     }
 }

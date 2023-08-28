@@ -6,6 +6,5 @@
     },
     "mqtt": {
         "broker": "tcp://<HOST>:1883"
-        "topic: "/collectd/#"
     }
 }
