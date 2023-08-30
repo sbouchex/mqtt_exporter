@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -32,7 +33,13 @@ var (
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
 	collector     = &mqttCollector{}
+
+	reCache = make(map[string]FilterCache)
 )
+
+type FilterCache struct {
+	fre *regexp.Regexp
+}
 
 type ExporterConfig struct {
 	ListeningAddress  string `mapstructure:"listeningAddress" default:":9393"`
@@ -59,8 +66,7 @@ type Entity struct {
 
 type FiltersEntry struct {
 	QueryFilter string `json:"queryFilter"`
-	Selector    string `json:"selector"`
-	Extractor   string `json:"extractor"`
+	Filter      string `json:"filter"`
 	Qos         byte   `mapstructure:"qos" default:"255"`
 }
 
@@ -179,10 +185,29 @@ func parseValue(e string) (float64, error) {
 	return -1.0, errors.New("Unvalid value")
 }
 
+func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
+
+	match := regEx.FindStringSubmatch(url)
+
+	paramsMap = make(map[string]string)
+	for i, name := range regEx.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			paramsMap[name] = match[i]
+		}
+	}
+	return paramsMap
+}
+
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	var data = msg.Payload()
 	var stData = string(data[:])
 	log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
+	for k, v := range reCache {
+		matches := getParams(v.fre, msg.Topic())
+		if len(matches) > 0 {
+			log.Debugf("Matched filter %s - message: %s from topic: %s => %s", k, stData, msg.Topic(), matches)
+		}
+	}
 }
 
 var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
@@ -228,6 +253,14 @@ func startExporter() {
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
+	}
+
+	log.Info("Compiling filters")
+	for k, v := range configuration.Filters {
+		c := FilterCache{}
+		fre := regexp.MustCompile(v.Filter)
+		c.fre = fre
+		reCache[k] = c
 	}
 
 	log.Info("Connected to MQTT broker " + config.Mqtt.Broker)
