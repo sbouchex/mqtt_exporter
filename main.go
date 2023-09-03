@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -18,8 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
+	"github.com/yalp/jsonpath"
 
 	"github.com/spf13/pflag"
+	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -30,6 +31,11 @@ var (
 			Help: "Unix timestamp of the last received metrics push in seconds.",
 		},
 	)
+
+	payloadTypeJson = "json"
+	configFileName  = "mqtt_exporter"
+	configFileExt   = "json"
+
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
 	collector     = &mqttCollector{}
@@ -38,14 +44,14 @@ var (
 )
 
 type FilterCache struct {
-	fre *regexp.Regexp
+	fre  *regexp.Regexp
+	path jsonpath.FilterFunc
 }
 
 type ExporterConfig struct {
 	ListeningAddress  string `mapstructure:"listeningAddress" default:":9393"`
 	MetricsPath       string `mapstructure:"metricsPath" default:"/metrics"`
 	ConfigurationFile string `mapstructure:"configurationFile"`
-	Verbose           bool   `mapstructure:"verbose" default:"false"`
 }
 
 type ExporterMqttConfig struct {
@@ -65,9 +71,10 @@ type Entity struct {
 }
 
 type FiltersEntry struct {
-	QueryFilter string `json:"queryFilter"`
-	Filter      string `json:"filter"`
-	Qos         byte   `mapstructure:"qos" default:"255"`
+	Filter    string   `json:"filter"`
+	Labels    []string `json:"labels"`
+	ValuePath string   `json:"valuePath"`
+	Name      string   `json:"name"`
 }
 
 type Configuration struct {
@@ -75,6 +82,26 @@ type Configuration struct {
 	Prefix      string                  `json:"prefix"`
 	PayloadType string                  `json:"payloadType"`
 	Topics      []string                `mapstructure:"topics"`
+}
+
+type TimeValueTypeFloat struct {
+	Time  int64   `json:"time"`
+	Value float64 `json:"value"`
+}
+
+type TimeValueTypeString struct {
+	Time  int64  `json:"time"`
+	Value string `json:"value"`
+}
+
+type TimeValueTypeStringArray struct {
+	Time  int64    `json:"time"`
+	Value []string `json:"value"`
+}
+
+type TimeValueTypeStringBool struct {
+	Time  int64 `json:"time"`
+	Value bool  `json:"value"`
 }
 
 func metricName(group string, name string) string {
@@ -179,7 +206,7 @@ func parseValue(e string) (float64, error) {
 	if err == nil {
 		return val, err
 	}
-	if config.Config.Verbose {
+	if *verboseVar {
 		log.Debugf("Error parsing state=%s", e)
 	}
 	return -1.0, errors.New("Unvalid value")
@@ -201,11 +228,28 @@ func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	var data = msg.Payload()
 	var stData = string(data[:])
-	log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
 	for k, v := range reCache {
 		matches := getParams(v.fre, msg.Topic())
 		if len(matches) > 0 {
-			log.Debugf("Matched filter %s - message: %s from topic: %s => %s", k, stData, msg.Topic(), matches)
+			if configuration.PayloadType == payloadTypeJson {
+				var jsonValue interface{}
+				log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
+				err := json.Unmarshal(data, &jsonValue)
+				if err == nil {
+					var name = k
+					for kMatches, _vMatches := range matches {
+						if kMatches == "N" {
+							name = _vMatches
+						}
+					}
+					if configuration.Filters[k].Name != "" {
+						name = configuration.Filters[k].Name
+					}
+					value, _ := v.path(jsonValue)
+					log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
+					return
+				}
+			}
 		}
 	}
 }
@@ -220,7 +264,7 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 
 func startExporter() {
 
-	if config.Config.Verbose {
+	if *verboseVar {
 		log.SetLevel(log.DebugLevel)
 	}
 
@@ -229,13 +273,17 @@ func startExporter() {
 		log.Info("Parsing Configuration file")
 		byteValue, _ := ioutil.ReadAll(configurationFile)
 		json.Unmarshal(byteValue, &configuration)
-		if config.Config.Verbose {
+		if *verboseVar {
 			log.Debug(configuration)
 		}
 		log.Infof("Parsing Configuration file: %d entries", len(configuration.Filters))
 		defer configurationFile.Close()
 	} else {
 		log.Fatalf("Failed to open configuration file: %s", config.Config.ConfigurationFile)
+	}
+
+	if configuration.PayloadType != payloadTypeJson {
+		log.Fatalf("Wrong PayloadType value: %s", configuration.PayloadType)
 	}
 
 	collector = newmqttCollector()
@@ -260,12 +308,13 @@ func startExporter() {
 		c := FilterCache{}
 		fre := regexp.MustCompile(v.Filter)
 		c.fre = fre
+		c.path, _ = jsonpath.Prepare(v.ValuePath)
 		reCache[k] = c
 	}
 
-	log.Info("Connected to MQTT broker " + config.Mqtt.Broker)
+	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
 	for _, v := range configuration.Topics {
-		log.Info("Subscribed to topic " + v)
+		log.Infof("Subscribed to topic %s", v)
 		client.Subscribe(v, byte(config.Mqtt.Qos), nil)
 	}
 	log.Info("Waiting for messages")
@@ -274,30 +323,28 @@ func startExporter() {
 }
 
 func LoadConfig(path string) (err error) {
+
+	pflag.Parse()
+
 	viper.AddConfigPath(path)
-	viper.SetConfigName("mqtt_exporter")
-	viper.SetConfigType("json")
+
+	viper.SetConfigFile(configFileVar)
 
 	viper.AutomaticEnv()
 
 	err = viper.ReadInConfig()
 	if err != nil {
-		return
+		return err
 	}
-
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
-
 	defaults.SetDefaults(&config)
 	err = viper.Unmarshal(&config)
 
-	if viper.IsSet("verbose") {
-		config.Config.Verbose = viper.GetBool("verbose")
-	}
-
-	return
+	return err
 }
+
+var configFileVar string = "mqtt_exporter.json"
+var verboseVar *bool = flag.BoolP("verbose", "v", false, "Verbose mode")
 
 func main() {
 	viper.SetEnvPrefix("MQTT_EXPORTER")

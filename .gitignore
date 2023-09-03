@@ -15,6 +15,6 @@
 # vendor/
 
 mqtt_exporter.exe
-configuration.json
-mqtt_exporter.json
+configuration*.json
+mqtt_exporter*.json
 .vscode/launch.json
