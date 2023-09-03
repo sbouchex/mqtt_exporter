@@ -74,6 +74,7 @@ type FiltersEntry struct {
 	Filter    string   `json:"filter"`
 	Labels    []string `json:"labels"`
 	ValuePath string   `json:"valuePath"`
+	Group     string   `json:"group"`
 	Name      string   `json:"name"`
 }
 
@@ -118,8 +119,8 @@ func metricType(m FiltersEntry) (prometheus.ValueType, error) {
 	return prometheus.GaugeValue, nil
 }
 
-func metricKey(host string, group string, name string, instance string, index string, vindex int) string {
-	return fmt.Sprintf("%s-%s-%s-%s-%s-%d", host, group, name, instance, index, vindex)
+func metricKey(group string, name string, labels prometheus.Labels) string {
+	return fmt.Sprintf("%s-%s-%v", group, name, labels)
 }
 
 type newmqttSample struct {
@@ -174,6 +175,24 @@ func (c *mqttCollector) processSamples() {
 	}
 }
 
+func parseValue(value interface{}) (float64, error) {
+	svalue := fmt.Sprintf("%v", value)
+	val, err := strconv.ParseFloat(svalue, 64)
+
+	log.Debugf("parseValue: %s - %s", svalue, err)
+
+	if svalue == "false" {
+		return 0, err
+	}
+	if svalue == "true" {
+		return 1, err
+	}
+	if err == nil {
+		return val, err
+	}
+	return -1.0, errors.New("Unvalid value")
+}
+
 // Collect implements prometheus.Collector.
 func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- lastPush
@@ -201,17 +220,6 @@ func (c mqttCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lastPush.Desc()
 }
 
-func parseValue(e string) (float64, error) {
-	val, err := strconv.ParseFloat(e, 64)
-	if err == nil {
-		return val, err
-	}
-	if *verboseVar {
-		log.Debugf("Error parsing state=%s", e)
-	}
-	return -1.0, errors.New("Unvalid value")
-}
-
 func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
 
 	match := regEx.FindStringSubmatch(url)
@@ -237,9 +245,9 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				err := json.Unmarshal(data, &jsonValue)
 				if err == nil {
 					var name = k
-					for kMatches, _vMatches := range matches {
+					for kMatches, vMatches := range matches {
 						if kMatches == "N" {
-							name = _vMatches
+							name = vMatches
 						}
 					}
 					if configuration.Filters[k].Name != "" {
@@ -247,7 +255,34 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					}
 					value, _ := v.path(jsonValue)
 					log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
-					return
+
+					pvalue, err := parseValue(value)
+
+					var group = configuration.Filters[k].Group
+					if group == "" {
+						group = k
+					}
+
+					now := time.Now()
+					lastPush.Set(float64(now.UnixNano()) / 1e9)
+					metricType, err := metricType(configuration.Filters[k])
+					if err == nil {
+						labels := prometheus.Labels{}
+						for kMatches, vMatches := range matches {
+							if kMatches[0] == 'L' {
+								labels[kMatches] = vMatches
+							}
+						}
+						collector.ch <- &newmqttSample{
+							Id:      metricKey(group, name, labels),
+							Name:    metricName(group, name),
+							Labels:  labels,
+							Help:    metricHelp(group, name),
+							Value:   pvalue,
+							Type:    metricType,
+							Expires: now.Add(time.Duration(300) * time.Second * 2),
+						}
+					}
 				}
 			}
 		}
