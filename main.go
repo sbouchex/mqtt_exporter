@@ -180,10 +180,10 @@ func parseValue(value interface{}) (float64, error) {
 
 	log.Debugf("parseValue: %s - %s", svalue, err)
 
-	if svalue == "false" {
+	if svalue == "false" || svalue == "OFF" {
 		return 0, err
 	}
-	if svalue == "true" {
+	if svalue == "true" || svalue == "ON" {
 		return 1, err
 	}
 	if err == nil {
