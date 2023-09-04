@@ -1,11 +1,18 @@
 {
     "prefix": "mqtt_exporter_",
-    "payloadType": "jsonTime-Value",
+    "payloadType": "json",
+    "topics": [
+        "zigbee2mqtt/#"
+    ],
     "filters": {
-        "toit": {
-            "topic": "/collectd/#",
-            "Selector": "homeassistant/Toit/.+",
-            "queryFilter": "homeassistant/(L.+)/(L.+)/(L.+)/(N.+)"
-        },
+        "sensors": {
+            "filter": "zigbee2mqtt/(?P<L1>0x.+)",
+            "labels": [],
+            "values": {
+                "linkquality": "$.linkquality",
+                "voltage": "$.voltage"
+            },
+            "group": "zigbee2mqtt"
+        }
     }
 }
