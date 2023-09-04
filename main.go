@@ -106,12 +106,21 @@ type TimeValueTypeStringBool struct {
 
 func metricName(group string, name string) string {
 	result := configuration.Prefix
-	result += fmt.Sprintf("%s_%s", group, name)
-	return result
+	if group != "" {
+		result += fmt.Sprintf("%s_%s", group, name)
+		return result
+	} else {
+		result += name
+		return result
+	}
 }
 
 func metricHelp(group string, name string) string {
-	return fmt.Sprintf("new mqttexporter: Name: '%s_%s'", group, name)
+	if group != "" {
+		return fmt.Sprintf("new mqttexporter: Name: '%s_%s'", group, name)
+	} else {
+		return fmt.Sprintf("new mqttexporter: Name: '%s'", name)
+	}
 }
 
 func metricType(m FiltersEntry) (prometheus.ValueType, error) {
@@ -119,7 +128,11 @@ func metricType(m FiltersEntry) (prometheus.ValueType, error) {
 }
 
 func metricKey(group string, name string, labels prometheus.Labels) string {
-	return fmt.Sprintf("%s-%s-%v", group, name, labels)
+	if group != "" {
+		return fmt.Sprintf("%s-%s-%v", group, name, labels)
+	} else {
+		return fmt.Sprintf("%s-%v", name, labels)
+	}
 }
 
 type newmqttSample struct {
@@ -178,14 +191,13 @@ func parseValue(value interface{}) (float64, error) {
 	svalue := fmt.Sprintf("%v", value)
 	val, err := strconv.ParseFloat(svalue, 64)
 
-	log.Debugf("parseValue: %s - %s", svalue, err)
-
 	if svalue == "false" || svalue == "OFF" {
 		return 0, err
 	}
 	if svalue == "true" || svalue == "ON" {
 		return 1, err
 	}
+	log.Debugf("parseValue: %s - %s", svalue, err)
 	if err == nil {
 		return val, err
 	}
@@ -262,9 +274,6 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							pvalue, err := parseValue(value)
 
 							var group = configuration.Filters[k].Group
-							if group == "" {
-								group = k
-							}
 
 							now := time.Now()
 							lastPush.Set(float64(now.UnixNano()) / 1e9)
