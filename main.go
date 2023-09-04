@@ -69,20 +69,21 @@ type Entity struct {
 	LastUpdated string `json:"last_updated"`
 }
 
-type FiltersEntry struct {
-	Filter string            `json:"filter"`
-	Labels []string          `json:"labels"`
-	Values map[string]string `json:"values"`
-	Group  string            `json:"group"`
-	Name   string            `json:"name"`
+type Sensor struct {
+	Filter   string            `json:"filter"`
+	Labels   []string          `json:"labels"`
+	Values   map[string]string `json:"values"`
+	Group    string            `json:"group"`
+	Name     string            `json:"name"`
+	Disabled bool              `json:"disabled"`
 }
 
 type Configuration struct {
-	Filters     map[string]FiltersEntry `json:"filters"`
-	Prefix      string                  `json:"prefix"`
-	PayloadType string                  `json:"payloadType"`
-	Topics      []string                `mapstructure:"topics"`
-	PurgeDelay  int64                   `json:"purgeDelay"`
+	Sensors     map[string]Sensor `json:"sensors"`
+	Prefix      string            `json:"prefix"`
+	PayloadType string            `json:"payloadType"`
+	Topics      []string          `mapstructure:"topics"`
+	PurgeDelay  int64             `json:"purgeDelay"`
 }
 
 type TimeValueTypeFloat struct {
@@ -124,7 +125,7 @@ func metricHelp(group string, name string) string {
 	}
 }
 
-func metricType(m FiltersEntry) (prometheus.ValueType, error) {
+func metricType(m Sensor) (prometheus.ValueType, error) {
 	return prometheus.GaugeValue, nil
 }
 
@@ -235,6 +236,9 @@ func (c mqttCollector) Describe(ch chan<- *prometheus.Desc) {
 func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
 
 	match := regEx.FindStringSubmatch(url)
+	if match == nil {
+		return nil
+	}
 
 	paramsMap = make(map[string]string)
 	for i, name := range regEx.SubexpNames() {
@@ -250,8 +254,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	var stData = string(data[:])
 	for k, v := range reCache {
 		matches := getParams(v.fre, msg.Topic())
-		if len(matches) > 0 {
-			var filter = configuration.Filters[k]
+		if matches != nil {
+			var filter = configuration.Sensors[k]
 
 			if configuration.PayloadType == payloadTypeJson {
 				var jsonValue interface{}
@@ -274,11 +278,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 							pvalue, err := parseValue(value)
 
-							var group = configuration.Filters[k].Group
+							var group = configuration.Sensors[k].Group
 
 							now := time.Now()
 							lastPush.Set(float64(now.UnixNano()) / 1e9)
-							metricType, err := metricType(configuration.Filters[k])
+							metricType, err := metricType(configuration.Sensors[k])
 							if err == nil {
 								labels := prometheus.Labels{}
 								for kMatches, vMatches := range matches {
@@ -327,7 +331,7 @@ func startExporter() {
 		if *verboseVar {
 			log.Debug(configuration)
 		}
-		log.Infof("Parsing Configuration file: %d entries", len(configuration.Filters))
+		log.Infof("Parsing Configuration file: %d entries", len(configuration.Sensors))
 		defer configurationFile.Close()
 	} else {
 		log.Fatalf("Failed to open configuration file: %s", config.Config.ConfigurationFile)
@@ -354,13 +358,18 @@ func startExporter() {
 		panic(token.Error())
 	}
 
-	log.Info("Compiling filters")
-	for k, v := range configuration.Filters {
-		c := FilterCache{}
-		fre := regexp.MustCompile(v.Filter)
-		c.fre = fre
-		reCache[k] = c
+	log.Infof("Compiling %d filters", len(configuration.Sensors))
+	var nbRunningFilters int = 0
+	for k, v := range configuration.Sensors {
+		if !v.Disabled {
+			c := FilterCache{}
+			fre := regexp.MustCompile(v.Filter)
+			c.fre = fre
+			reCache[k] = c
+			nbRunningFilters = nbRunningFilters + 1
+		}
 	}
+	log.Infof("Started %d filters", nbRunningFilters)
 
 	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
 	for _, v := range configuration.Topics {
