@@ -285,6 +285,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 										labels[kMatches] = vMatches
 									}
 								}
+								log.Debugf("Adding metric %s", metricKey(group, name, labels))
 								collector.ch <- &newmqttSample{
 									Id:      metricKey(group, name, labels),
 									Name:    metricName(group, name),
