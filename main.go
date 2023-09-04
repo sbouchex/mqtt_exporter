@@ -375,8 +375,8 @@ func LoadConfig(path string) (err error) {
 	pflag.Parse()
 
 	viper.AddConfigPath(path)
-
-	viper.SetConfigFile(configFileVar)
+	viper.SetConfigName("mqtt_exporter")
+	viper.SetConfigType("json")
 
 	viper.AutomaticEnv()
 
@@ -391,7 +391,6 @@ func LoadConfig(path string) (err error) {
 	return err
 }
 
-var configFileVar string = "mqtt_exporter.json"
 var verboseVar *bool = flag.BoolP("verbose", "v", false, "Verbose mode")
 
 func main() {
