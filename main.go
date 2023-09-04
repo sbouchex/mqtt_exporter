@@ -82,6 +82,7 @@ type Configuration struct {
 	Prefix      string                  `json:"prefix"`
 	PayloadType string                  `json:"payloadType"`
 	Topics      []string                `mapstructure:"topics"`
+	PurgeDelay  int64                   `json:"purgeDelay"`
 }
 
 type TimeValueTypeFloat struct {
@@ -293,7 +294,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 									Help:    metricHelp(group, name),
 									Value:   pvalue,
 									Type:    metricType,
-									Expires: now.Add(time.Duration(300) * time.Second * 2),
+									Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
 								}
 							}
 						}
