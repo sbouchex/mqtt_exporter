@@ -44,8 +44,7 @@ var (
 )
 
 type FilterCache struct {
-	fre  *regexp.Regexp
-	path jsonpath.FilterFunc
+	fre *regexp.Regexp
 }
 
 type ExporterConfig struct {
@@ -71,11 +70,11 @@ type Entity struct {
 }
 
 type FiltersEntry struct {
-	Filter    string   `json:"filter"`
-	Labels    []string `json:"labels"`
-	ValuePath string   `json:"valuePath"`
-	Group     string   `json:"group"`
-	Name      string   `json:"name"`
+	Filter string            `json:"filter"`
+	Labels []string          `json:"labels"`
+	Values map[string]string `json:"values"`
+	Group  string            `json:"group"`
+	Name   string            `json:"name"`
 }
 
 type Configuration struct {
@@ -239,48 +238,54 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 	for k, v := range reCache {
 		matches := getParams(v.fre, msg.Topic())
 		if len(matches) > 0 {
+			var filter = configuration.Filters[k]
+
 			if configuration.PayloadType == payloadTypeJson {
 				var jsonValue interface{}
 				log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
 				err := json.Unmarshal(data, &jsonValue)
 				if err == nil {
-					var name = k
-					for kMatches, vMatches := range matches {
-						if kMatches == "N" {
-							name = vMatches
-						}
-					}
-					if configuration.Filters[k].Name != "" {
-						name = configuration.Filters[k].Name
-					}
-					value, _ := v.path(jsonValue)
-					log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
-
-					pvalue, err := parseValue(value)
-
-					var group = configuration.Filters[k].Group
-					if group == "" {
-						group = k
-					}
-
-					now := time.Now()
-					lastPush.Set(float64(now.UnixNano()) / 1e9)
-					metricType, err := metricType(configuration.Filters[k])
-					if err == nil {
-						labels := prometheus.Labels{}
+					for vname, vpath := range filter.Values {
+						var name = ""
 						for kMatches, vMatches := range matches {
-							if kMatches[0] == 'L' {
-								labels[kMatches] = vMatches
+							if kMatches == "N" {
+								name = vMatches
 							}
 						}
-						collector.ch <- &newmqttSample{
-							Id:      metricKey(group, name, labels),
-							Name:    metricName(group, name),
-							Labels:  labels,
-							Help:    metricHelp(group, name),
-							Value:   pvalue,
-							Type:    metricType,
-							Expires: now.Add(time.Duration(300) * time.Second * 2),
+						if name == "" {
+							name = vname
+						}
+						var value, _ = jsonpath.Read(jsonValue, vpath)
+						if value != nil {
+							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
+
+							pvalue, err := parseValue(value)
+
+							var group = configuration.Filters[k].Group
+							if group == "" {
+								group = k
+							}
+
+							now := time.Now()
+							lastPush.Set(float64(now.UnixNano()) / 1e9)
+							metricType, err := metricType(configuration.Filters[k])
+							if err == nil {
+								labels := prometheus.Labels{}
+								for kMatches, vMatches := range matches {
+									if kMatches[0] == 'L' {
+										labels[kMatches] = vMatches
+									}
+								}
+								collector.ch <- &newmqttSample{
+									Id:      metricKey(group, name, labels),
+									Name:    metricName(group, name),
+									Labels:  labels,
+									Help:    metricHelp(group, name),
+									Value:   pvalue,
+									Type:    metricType,
+									Expires: now.Add(time.Duration(300) * time.Second * 2),
+								}
+							}
 						}
 					}
 				}
@@ -343,7 +348,6 @@ func startExporter() {
 		c := FilterCache{}
 		fre := regexp.MustCompile(v.Filter)
 		c.fre = fre
-		c.path, _ = jsonpath.Prepare(v.ValuePath)
 		reCache[k] = c
 	}
 
