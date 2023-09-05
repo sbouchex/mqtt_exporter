@@ -33,6 +33,7 @@ var (
 	)
 
 	payloadTypeJson = "json"
+	payloadTypeRaw  = "raw"
 	configFileName  = "mqtt_exporter"
 	configFileExt   = "json"
 
@@ -70,20 +71,20 @@ type Entity struct {
 }
 
 type Sensor struct {
-	Filter   string            `json:"filter"`
-	Labels   []string          `json:"labels"`
-	Values   map[string]string `json:"values"`
-	Group    string            `json:"group"`
-	Name     string            `json:"name"`
-	Disabled bool              `json:"disabled"`
+	Filter      string            `json:"filter"`
+	Labels      []string          `json:"labels"`
+	Values      map[string]string `json:"values"`
+	Group       string            `json:"group"`
+	Name        string            `json:"name"`
+	Disabled    bool              `json:"disabled"`
+	PayloadType string            `json:"payloadType"`
 }
 
 type Configuration struct {
-	Sensors     map[string]Sensor `json:"sensors"`
-	Prefix      string            `json:"prefix"`
-	PayloadType string            `json:"payloadType"`
-	Topics      []string          `mapstructure:"topics"`
-	PurgeDelay  int64             `json:"purgeDelay"`
+	Sensors    map[string]Sensor `json:"sensors"`
+	Prefix     string            `json:"prefix"`
+	Topics     []string          `mapstructure:"topics"`
+	PurgeDelay int64             `json:"purgeDelay"`
 }
 
 type TimeValueTypeFloat struct {
@@ -257,10 +258,51 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		if matches != nil {
 			var filter = configuration.Sensors[k]
 
-			if configuration.PayloadType == payloadTypeJson {
-				var jsonValue interface{}
-				log.Debugf("Received message: %s from topic: %s", stData, msg.Topic())
-				err := json.Unmarshal(data, &jsonValue)
+			var err interface{}
+			var dataValue interface{}
+			if filter.PayloadType == payloadTypeRaw {
+				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
+				var name = ""
+				for kMatches, vMatches := range matches {
+					if kMatches == "N" {
+						name = vMatches
+					}
+				}
+				if name == "" {
+					name = configuration.Sensors[k].Name
+				}
+
+				dataValue = stData
+
+				pvalue, err := parseValue(dataValue)
+
+				var group = configuration.Sensors[k].Group
+
+				now := time.Now()
+				lastPush.Set(float64(now.UnixNano()) / 1e9)
+				metricType, err := metricType(configuration.Sensors[k])
+				if err == nil {
+					labels := prometheus.Labels{}
+					for kMatches, vMatches := range matches {
+						if kMatches[0] == 'L' {
+							labels[kMatches] = vMatches
+						}
+					}
+					log.Debugf("Adding metric %s", metricKey(group, name, labels))
+					collector.ch <- &newmqttSample{
+						Id:      metricKey(group, name, labels),
+						Name:    metricName(group, name),
+						Labels:  labels,
+						Help:    metricHelp(group, name),
+						Value:   pvalue,
+						Type:    metricType,
+						Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+					}
+				}
+			}
+			if filter.PayloadType == payloadTypeJson {
+				log.Debugf("Received JSON message: %s from topic: %s", stData, msg.Topic())
+				err = json.Unmarshal(data, &dataValue)
 				if err == nil {
 					for vname, vpath := range filter.Values {
 						var name = ""
@@ -272,7 +314,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						if name == "" {
 							name = vname
 						}
-						var value, _ = jsonpath.Read(jsonValue, vpath)
+						var value, _ = jsonpath.Read(dataValue, vpath)
 						if value != nil {
 							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
 
@@ -337,10 +379,6 @@ func startExporter() {
 		log.Fatalf("Failed to open configuration file: %s", config.Config.ConfigurationFile)
 	}
 
-	if configuration.PayloadType != payloadTypeJson {
-		log.Fatalf("Wrong PayloadType value: %s", configuration.PayloadType)
-	}
-
 	collector = newmqttCollector()
 	prometheus.MustRegister(collector)
 
@@ -362,6 +400,9 @@ func startExporter() {
 	var nbRunningFilters int = 0
 	for k, v := range configuration.Sensors {
 		if !v.Disabled {
+			if v.PayloadType != payloadTypeJson && v.PayloadType != payloadTypeRaw {
+				log.Fatalf("Wrong PayloadType value: %s", v.PayloadType)
+			}
 			c := FilterCache{}
 			fre := regexp.MustCompile(v.Filter)
 			c.fre = fre
