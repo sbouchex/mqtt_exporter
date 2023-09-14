@@ -33,10 +33,11 @@ var (
 		},
 	)
 
-	payloadTypeJson = "json"
-	payloadTypeRaw  = "raw"
-	configFileName  = "mqtt_exporter"
-	configFileExt   = "json"
+	payloadTypeJson     = "json"
+	payloadTypeRaw      = "raw"
+	payloadTypeCollectd = "collectd"
+	configFileName      = "mqtt_exporter"
+	configFileExt       = "json"
 
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
@@ -191,11 +192,26 @@ func (c *mqttCollector) processSamples() {
 	}
 }
 
+func parseValueCollectd(value interface{}) (float64, error) {
+	svalue := fmt.Sprintf("%s", value)
+	var partsMessage = strings.Split(svalue, ":")
+	if len(partsMessage) > 1 {
+		svalue = partsMessage[1]
+		val, err := strconv.ParseFloat(svalue, 64)
+
+		log.Debugf("parseValue: %s - %s", svalue, err)
+		if err == nil {
+			return val, err
+		}
+	}
+	return -1.0, errors.New("Unvalid value")
+}
+
 func parseValue(value interface{}) (float64, error) {
 	svalue := fmt.Sprintf("%s", value)
 	var partsMessage = strings.Split(svalue, ":")
 	if len(partsMessage) > 1 {
-		svalue = partsMessage[0]
+		svalue = partsMessage[1]
 	}
 	val, err := strconv.ParseFloat(svalue, 64)
 
@@ -265,7 +281,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 			var err interface{}
 			var dataValue interface{}
-			if filter.PayloadType == payloadTypeRaw {
+			if filter.PayloadType == payloadTypeRaw || filter.PayloadType == payloadTypeCollectd {
 				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
 				var name = ""
 				for kMatches, vMatches := range matches {
@@ -279,7 +295,13 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 				dataValue = stData
 
-				pvalue, err := parseValue(dataValue)
+				var pvalue = 0.0
+				var err interface{}
+				if filter.PayloadType == payloadTypeCollectd {
+					pvalue, err = parseValueCollectd(dataValue)
+				} else {
+					pvalue, err = parseValue(dataValue)
+				}
 
 				var group = configuration.Sensors[k].Group
 
