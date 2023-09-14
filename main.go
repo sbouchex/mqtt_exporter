@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -191,7 +192,11 @@ func (c *mqttCollector) processSamples() {
 }
 
 func parseValue(value interface{}) (float64, error) {
-	svalue := fmt.Sprintf("%v", value)
+	svalue := fmt.Sprintf("%s", value)
+	var partsMessage = strings.Split(svalue, ":")
+	if len(partsMessage) > 1 {
+		svalue = partsMessage[0]
+	}
 	val, err := strconv.ParseFloat(svalue, 64)
 
 	if svalue == "false" || svalue == "OFF" {
