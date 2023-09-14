@@ -427,7 +427,7 @@ func startExporter() {
 	var nbRunningFilters int = 0
 	for k, v := range configuration.Sensors {
 		if !v.Disabled {
-			if v.PayloadType != payloadTypeJson && v.PayloadType != payloadTypeRaw {
+			if v.PayloadType != payloadTypeJson && v.PayloadType != payloadTypeRaw && v.PayloadType != payloadTypeCollectd {
 				log.Fatalf("Wrong PayloadType value: %s", v.PayloadType)
 			}
 			c := FilterCache{}
