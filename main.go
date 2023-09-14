@@ -194,6 +194,9 @@ func (c *mqttCollector) processSamples() {
 
 func parseValueCollectd(value interface{}) (float64, error) {
 	svalue := fmt.Sprintf("%s", value)
+	if strings.HasSuffix(svalue, "\x00") {
+		svalue = svalue[:len(svalue)-1]
+	}
 	var partsMessage = strings.Split(svalue, ":")
 	if len(partsMessage) > 1 {
 		svalue = partsMessage[1]
