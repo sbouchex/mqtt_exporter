@@ -386,7 +386,7 @@ var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
 }
 
 var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-	log.Fatalf("Connect lost: %v", err)
+	log.Warnf("Connect lost: %v", err)
 }
 
 func startExporter() {
