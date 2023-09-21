@@ -215,6 +215,10 @@ func parseValue(value interface{}) (float64, error) {
 	var partsMessage = strings.Split(svalue, ":")
 	if len(partsMessage) > 1 {
 		svalue = partsMessage[1]
+	} else {
+		if _, ok := value.(float64); ok {
+			svalue = fmt.Sprintf("%f", value)
+		}
 	}
 	val, err := strconv.ParseFloat(svalue, 64)
 
