@@ -1,10 +1,10 @@
 {
     "config": {
-        "ListeningAddress": ":9393",
         "metricsPath": "/metrics",
         "configurationFile": "configuration.json"
     },
     "mqtt": {
-        "broker": "tcp://<HOST>:1883"
+        "broker": "tcp://mosquitto:1883",
+        "clientId": "mqtt_exporter_client"
     }
 }

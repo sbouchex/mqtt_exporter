@@ -1,18 +1,20 @@
 {
     "prefix": "mqtt_exporter_",
-    "payloadType": "json",
+    "purgeDelay": 3600,
     "topics": [
         "zigbee2mqtt/#"
     ],
-    "filters": {
+    "sensors": {
         "sensors": {
-            "filter": "zigbee2mqtt/(?P<L1>0x.+)",
+            "payloadType": "json",
+            "filter": "zigbee2mqtt/(?P<L1>prise_.+)",
             "labels": [],
             "values": {
                 "linkquality": "$.linkquality",
-                "voltage": "$.voltage"
-            },
-            "group": "zigbee2mqtt"
+                "voltage": "$.voltage",
+                "state": "$.state",
+                "battery": "$.battery"
+            }
         }
     }
 }
