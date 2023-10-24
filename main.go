@@ -278,6 +278,10 @@ func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
 	return paramsMap
 }
 
+var messagePubHandlerDefault mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	log.Warnf("Received message from topic: %s", msg.Topic())
+}
+
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	var data = msg.Payload()
 	var stData = string(data[:])
@@ -422,7 +426,7 @@ func startExporter() {
 	opts := mqtt.NewClientOptions()
 	opts.SetClientID(config.Mqtt.ClientId)
 	opts.AddBroker(config.Mqtt.Broker)
-	opts.SetDefaultPublishHandler(messagePubHandler)
+	opts.SetDefaultPublishHandler(messagePubHandlerDefault)
 	opts.SetAutoReconnect(true)
 	opts.OnConnect = connectHandler
 	opts.OnConnectionLost = connectLostHandler
@@ -450,7 +454,7 @@ func startExporter() {
 	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
 	for _, v := range configuration.Topics {
 		log.Infof("Subscribed to topic %s", v)
-		client.Subscribe(v, byte(config.Mqtt.Qos), nil)
+		client.Subscribe(v, byte(config.Mqtt.Qos), messagePubHandler)
 	}
 	log.Info("Waiting for messages")
 
