@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -402,7 +402,7 @@ func startExporter() {
 	configurationFile, err := os.Open(config.Config.ConfigurationFile)
 	if err == nil {
 		log.Info("Parsing Configuration file")
-		byteValue, _ := ioutil.ReadAll(configurationFile)
+		byteValue, _ := io.ReadAll(configurationFile)
 		json.Unmarshal(byteValue, &configuration)
 		if *verboseVar {
 			log.Debug(configuration)
@@ -423,6 +423,7 @@ func startExporter() {
 	opts.SetClientID(config.Mqtt.ClientId)
 	opts.AddBroker(config.Mqtt.Broker)
 	opts.SetDefaultPublishHandler(messagePubHandler)
+	opts.SetAutoReconnect(true)
 	opts.OnConnect = connectHandler
 	opts.OnConnectionLost = connectLostHandler
 	client := mqtt.NewClient(opts)
