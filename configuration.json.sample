@@ -5,7 +5,7 @@
         "zigbee2mqtt/#"
     ],
     "sensors": {
-        "sensors": {
+        "sensors_sample": {
             "payloadType": "json",
             "filter": "zigbee2mqtt/(?P<L1>prise_.+)",
             "labels": [],
