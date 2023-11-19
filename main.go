@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	payloadTypeJson     = "json"
+	payloadTypeRaw      = "raw"
+	payloadTypeCollectd = "collectd"
+	configFileName      = "mqtt_exporter"
+	configFileExt       = "json"
+)
+
 var (
 	lastPush = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -33,17 +42,12 @@ var (
 		},
 	)
 
-	payloadTypeJson     = "json"
-	payloadTypeRaw      = "raw"
-	payloadTypeCollectd = "collectd"
-	configFileName      = "mqtt_exporter"
-	configFileExt       = "json"
-
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
 	collector     = &mqttCollector{}
 
-	reCache = make(map[string]FilterCache)
+	reCache      = make(map[string]FilterCache)
+	reCacheIndex = []string{}
 )
 
 type FilterCache struct {
@@ -80,6 +84,7 @@ type Sensor struct {
 	Name        string            `json:"name"`
 	Disabled    bool              `json:"disabled"`
 	PayloadType string            `json:"payloadType"`
+	Order       int               `json:"order" default:"0"`
 }
 
 type Configuration struct {
@@ -112,10 +117,10 @@ type TimeValueTypeStringBool struct {
 func metricName(group string, name string) string {
 	result := configuration.Prefix
 	if group != "" {
-		result += fmt.Sprintf("%s_%s", group, name)
+		result += fmt.Sprintf("%s_%s", strings.ReplaceAll(group, "-", "_"), strings.ReplaceAll(name, "-", "_"))
 		return result
 	} else {
-		result += name
+		result += strings.ReplaceAll(name, "-", "_")
 		return result
 	}
 }
@@ -285,10 +290,12 @@ var messagePubHandlerDefault mqtt.MessageHandler = func(client mqtt.Client, msg 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	var data = msg.Payload()
 	var stData = string(data[:])
-	for k, v := range reCache {
+	for _, vk := range reCacheIndex {
+		v := reCache[vk]
+		log.Debugf("Matching sensor %s", vk)
 		matches := getParams(v.fre, msg.Topic())
 		if matches != nil {
-			var filter = configuration.Sensors[k]
+			var filter = configuration.Sensors[vk]
 
 			var err interface{}
 			var dataValue interface{}
@@ -301,7 +308,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					}
 				}
 				if name == "" {
-					name = configuration.Sensors[k].Name
+					name = configuration.Sensors[vk].Name
 				}
 
 				dataValue = stData
@@ -314,11 +321,19 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					pvalue, err = parseValue(dataValue)
 				}
 
-				var group = configuration.Sensors[k].Group
+				var group = ""
+				for kMatches, vMatches := range matches {
+					if kMatches == "G" {
+						group = vMatches
+					}
+				}
+				if group == "" {
+					group = configuration.Sensors[vk].Group
+				}
 
 				now := time.Now()
 				lastPush.Set(float64(now.UnixNano()) / 1e9)
-				metricType, err := metricType(configuration.Sensors[k])
+				metricType, err := metricType(configuration.Sensors[vk])
 				if err == nil {
 					labels := prometheus.Labels{}
 					for kMatches, vMatches := range matches {
@@ -354,15 +369,15 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						}
 						var value, _ = jsonpath.Read(dataValue, vpath)
 						if value != nil {
-							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", k, stData, msg.Topic(), matches, name, value)
+							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", vk, stData, msg.Topic(), matches, name, value)
 
 							pvalue, err := parseValue(value)
 
-							var group = configuration.Sensors[k].Group
+							var group = configuration.Sensors[vk].Group
 
 							now := time.Now()
 							lastPush.Set(float64(now.UnixNano()) / 1e9)
-							metricType, err := metricType(configuration.Sensors[k])
+							metricType, err := metricType(configuration.Sensors[vk])
 							if err == nil {
 								labels := prometheus.Labels{}
 								for kMatches, vMatches := range matches {
@@ -385,6 +400,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					}
 				}
 			}
+			log.Debug("Matched")
+			break
 		}
 	}
 }
@@ -446,9 +463,21 @@ func startExporter() {
 			fre := regexp.MustCompile(v.Filter)
 			c.fre = fre
 			reCache[k] = c
+			reCacheIndex = append(reCacheIndex, k)
 			nbRunningFilters = nbRunningFilters + 1
 		}
 	}
+
+	// Sort sensors by Order
+	for key, value := range configuration.Sensors {
+		if !value.Disabled {
+			reCacheIndex = append(reCacheIndex, key)
+		}
+	}
+	sort.Slice(reCacheIndex, func(i, j int) bool {
+		return configuration.Sensors[reCacheIndex[i]].Order < configuration.Sensors[reCacheIndex[j]].Order
+	})
+
 	log.Infof("Started %d filters", nbRunningFilters)
 
 	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
@@ -469,6 +498,10 @@ func LoadConfig(path string) (err error) {
 	viper.SetConfigName("mqtt_exporter")
 	viper.SetConfigType("json")
 
+	if *ConfigFilePath != "" {
+		viper.SetConfigName(*ConfigFilePath)
+	}
+
 	viper.AutomaticEnv()
 
 	err = viper.ReadInConfig()
@@ -483,6 +516,7 @@ func LoadConfig(path string) (err error) {
 }
 
 var verboseVar *bool = flag.BoolP("verbose", "v", false, "Verbose mode")
+var ConfigFilePath *string = flag.StringP("configfile", "c", "", "Config File")
 
 func main() {
 	viper.SetEnvPrefix("MQTT_EXPORTER")

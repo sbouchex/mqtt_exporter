@@ -1,5 +1,6 @@
 {
     "config": {
+        "ListeningAddress": ":9393",
         "metricsPath": "/metrics",
         "configurationFile": "configuration.json"
     },
