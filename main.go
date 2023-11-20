@@ -197,22 +197,29 @@ func (c *mqttCollector) processSamples() {
 	}
 }
 
-func parseValueCollectd(value interface{}) (float64, error) {
+func parseValueCollectd(value interface{}) ([]float64, error) {
 	svalue := fmt.Sprintf("%s", value)
 	if strings.HasSuffix(svalue, "\x00") {
 		svalue = svalue[:len(svalue)-1]
 	}
+
+	vals := []float64{}
 	var partsMessage = strings.Split(svalue, ":")
 	if len(partsMessage) > 1 {
-		svalue = partsMessage[1]
-		val, err := strconv.ParseFloat(svalue, 64)
 
-		log.Debugf("parseValue: %s - %s", svalue, err)
-		if err == nil {
-			return val, err
+		for i, part := range partsMessage {
+			if i > 0 {
+				val, err := strconv.ParseFloat(part, 64)
+				log.Debugf("parseValue %d/%d: %s - %s", i, len(partsMessage)-1, svalue, err)
+				if err == nil {
+					vals = append(vals, val)
+				} else {
+					return []float64{}, errors.New(fmt.Sprintf("Unvalid values %s", svalue))
+				}
+			}
 		}
 	}
-	return -1.0, errors.New("Unvalid value")
+	return vals, nil
 }
 
 func parseValue(value interface{}) (float64, error) {
@@ -299,7 +306,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 			var err interface{}
 			var dataValue interface{}
-			if filter.PayloadType == payloadTypeRaw || filter.PayloadType == payloadTypeCollectd {
+			if filter.PayloadType == payloadTypeRaw {
 				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
 				var name = ""
 				for kMatches, vMatches := range matches {
@@ -313,13 +320,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 				dataValue = stData
 
-				var pvalue = 0.0
-				var err interface{}
-				if filter.PayloadType == payloadTypeCollectd {
-					pvalue, err = parseValueCollectd(dataValue)
-				} else {
-					pvalue, err = parseValue(dataValue)
-				}
+				var pvalue, err = parseValue(dataValue)
 
 				var group = ""
 				for kMatches, vMatches := range matches {
@@ -350,6 +351,61 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						Value:   pvalue,
 						Type:    metricType,
 						Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+					}
+				}
+			}
+
+			if filter.PayloadType == payloadTypeCollectd {
+				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
+				var name = ""
+				for kMatches, vMatches := range matches {
+					if kMatches == "N" {
+						name = vMatches
+					}
+				}
+				if name == "" {
+					name = configuration.Sensors[vk].Name
+				}
+
+				dataValue = stData
+
+				var pvalues, errParse = parseValueCollectd(dataValue)
+				if errParse == nil {
+					for index, pvalue := range pvalues {
+						var group = ""
+						for kMatches, vMatches := range matches {
+							if kMatches == "G" {
+								group = vMatches
+							}
+						}
+						if group == "" {
+							group = configuration.Sensors[vk].Group
+						}
+
+						now := time.Now()
+						lastPush.Set(float64(now.UnixNano()) / 1e9)
+						metricType, err := metricType(configuration.Sensors[vk])
+						if err == nil {
+							labels := prometheus.Labels{}
+							if len(pvalues) > 1 {
+								labels["V"] = fmt.Sprintf("%d", index)
+							}
+							for kMatches, vMatches := range matches {
+								if kMatches[0] == 'L' {
+									labels[kMatches] = vMatches
+								}
+							}
+							log.Debugf("Adding metric %s", metricKey(group, name, labels))
+							collector.ch <- &newmqttSample{
+								Id:      metricKey(group, name, labels),
+								Name:    metricName(group, name),
+								Labels:  labels,
+								Help:    metricHelp(group, name),
+								Value:   pvalue,
+								Type:    metricType,
+								Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+							}
+						}
 					}
 				}
 			}
