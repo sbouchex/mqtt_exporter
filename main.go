@@ -352,6 +352,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						Type:    metricType,
 						Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
 					}
+				} else {
+					log.Error("parseValue failure: ", err)
 				}
 			}
 
@@ -407,6 +409,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							}
 						}
 					}
+				} else {
+					log.Error("parseValueCollectd failure: ", errParse)
 				}
 			}
 			if filter.PayloadType == payloadTypeJson {
@@ -451,6 +455,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 									Type:    metricType,
 									Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
 								}
+							} else {
+								log.Error("parseValue failure: ", err)
 							}
 						}
 					}
