@@ -15,7 +15,7 @@ jobs:
       id-token: write
     steps:
       - name: Delete old images
-        uses: snok/container-retention-policy@v2.1.1
+        uses: snok/container-retention-policy@v2
         with:
           image-names: mqtt_exporter
           cut-off: One month ago UTC
