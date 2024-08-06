@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.22 AS builder
 WORKDIR /build
 ADD go.mod .
 COPY . .
