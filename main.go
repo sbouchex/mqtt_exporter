@@ -500,6 +500,9 @@ func startExporter() {
 	prometheus.MustRegister(collector)
 
 	log.Info("Listening on " + config.Config.ListeningAddress)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "mqtt_exporter is started")
+	})
 	http.Handle(config.Config.MetricsPath, promhttp.Handler())
 
 	opts := mqtt.NewClientOptions()
