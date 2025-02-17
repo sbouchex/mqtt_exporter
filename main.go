@@ -17,6 +17,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mcuadros/go-defaults"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/yalp/jsonpath"
@@ -57,6 +58,7 @@ type FilterCache struct {
 type ExporterConfig struct {
 	ListeningAddress  string `mapstructure:"listeningAddress" default:":9393"`
 	MetricsPath       string `mapstructure:"metricsPath" default:"/metrics"`
+	GoMetricsPath     string `mapstructure:"gometricsPath" default:"/gometrics"`
 	ConfigurationFile string `mapstructure:"configurationFile"`
 }
 
@@ -496,8 +498,16 @@ func startExporter() {
 		log.Fatalf("Failed to open configuration file: %s", config.Config.ConfigurationFile)
 	}
 
+	// Exporter without gometrics
 	collector = newmqttCollector()
 	prometheus.MustRegister(collector)
+	prometheus.Unregister(collectors.NewGoCollector())
+	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	// Exporter with gometrics only
+	promReg := prometheus.NewRegistry()
+	promReg.Register(collectors.NewGoCollector())
+	http.Handle(config.Config.GoMetricsPath, promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	log.Info("Listening on " + config.Config.ListeningAddress)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
