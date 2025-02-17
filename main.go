@@ -33,6 +33,10 @@ const (
 	payloadTypeCollectd = "collectd"
 	configFileName      = "mqtt_exporter"
 	configFileExt       = "json"
+
+	matchTypeLabel = 'L'
+	matchTypeGroup = "G"
+	matchTypeName  = "N"
 )
 
 var (
@@ -79,14 +83,15 @@ type Entity struct {
 }
 
 type Sensor struct {
-	Filter      string            `json:"filter"`
-	Labels      []string          `json:"labels"`
-	Values      map[string]string `json:"values"`
-	Group       string            `json:"group"`
-	Name        string            `json:"name"`
-	Disabled    bool              `json:"disabled"`
-	PayloadType string            `json:"payloadType"`
-	Order       int               `json:"order" default:"0"`
+	Filter                      string            `json:"filter"`
+	Labels                      []string          `json:"labels"`
+	Values                      map[string]string `json:"values"`
+	Group                       string            `json:"group"`
+	Name                        string            `json:"name"`
+	Disabled                    bool              `json:"disabled"`
+	PayloadType                 string            `json:"payloadType"`
+	Order                       int               `json:"order" default:"0"`
+	LabelsCleanupFirstCharacter bool              `json:"labelsCleanupFirstCharacter" default:"false"`
 }
 
 type Configuration struct {
@@ -216,7 +221,7 @@ func parseValueCollectd(value interface{}) ([]float64, error) {
 				if err == nil {
 					vals = append(vals, val)
 				} else {
-					return []float64{}, errors.New(fmt.Sprintf("Unvalid values %s", svalue))
+					return []float64{}, errors.New(fmt.Sprintf("INVALID VALUE %s", svalue))
 				}
 			}
 		}
@@ -246,7 +251,7 @@ func parseValue(value interface{}) (float64, error) {
 	if err == nil {
 		return val, err
 	}
-	return -1.0, errors.New("Unvalid value")
+	return -1.0, errors.New("INVALID VALUE")
 }
 
 // Collect implements prometheus.Collector.
@@ -312,7 +317,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
 				var name = ""
 				for kMatches, vMatches := range matches {
-					if kMatches == "N" {
+					if kMatches == matchTypeName {
 						name = vMatches
 					}
 				}
@@ -326,7 +331,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 				var group = ""
 				for kMatches, vMatches := range matches {
-					if kMatches == "G" {
+					if kMatches == matchTypeGroup {
 						group = vMatches
 					}
 				}
@@ -340,7 +345,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				if err == nil {
 					labels := prometheus.Labels{}
 					for kMatches, vMatches := range matches {
-						if kMatches[0] == 'L' {
+						if kMatches[0] == matchTypeLabel {
+							if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+								kMatches = kMatches[1:]
+							}
 							labels[kMatches] = vMatches
 						}
 					}
@@ -363,7 +371,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				log.Debugf("Received Raw message: %s from topic: %s", stData, msg.Topic())
 				var name = ""
 				for kMatches, vMatches := range matches {
-					if kMatches == "N" {
+					if kMatches == matchTypeName {
 						name = vMatches
 					}
 				}
@@ -378,7 +386,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					for index, pvalue := range pvalues {
 						var group = ""
 						for kMatches, vMatches := range matches {
-							if kMatches == "G" {
+							if kMatches == matchTypeGroup {
 								group = vMatches
 							}
 						}
@@ -395,7 +403,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 								labels["V"] = fmt.Sprintf("%d", index)
 							}
 							for kMatches, vMatches := range matches {
-								if kMatches[0] == 'L' {
+								if kMatches[0] == matchTypeLabel {
+									if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+										kMatches = kMatches[1:]
+									}
 									labels[kMatches] = vMatches
 								}
 							}
@@ -422,7 +433,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					for vname, vpath := range filter.Values {
 						var name = ""
 						for kMatches, vMatches := range matches {
-							if kMatches == "N" {
+							if kMatches == matchTypeName {
 								name = vMatches
 							}
 						}
@@ -443,7 +454,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							if err == nil {
 								labels := prometheus.Labels{}
 								for kMatches, vMatches := range matches {
-									if kMatches[0] == 'L' {
+									if kMatches[0] == matchTypeLabel {
+										if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+											kMatches = kMatches[1:]
+										}
 										labels[kMatches] = vMatches
 									}
 								}
