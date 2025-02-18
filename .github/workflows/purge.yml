@@ -20,5 +20,5 @@ jobs:
           account: user
           token: ${{ secrets.PAT }}
           image-names: mqtt_exporter
-          cut-off: One month ago UTC
+          cut-off: 1month
           keep-n-most-recent: 5
