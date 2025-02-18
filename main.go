@@ -83,14 +83,15 @@ type Entity struct {
 }
 
 type Sensor struct {
-	Filter      string            `json:"filter"`
-	Labels      []string          `json:"labels"`
-	Values      map[string]string `json:"values"`
-	Group       string            `json:"group"`
-	Name        string            `json:"name"`
-	Disabled    bool              `json:"disabled"`
-	PayloadType string            `json:"payloadType"`
-	Order       int               `json:"order" default:"0"`
+	Filter                      string            `json:"filter"`
+	Labels                      []string          `json:"labels"`
+	Values                      map[string]string `json:"values"`
+	Group                       string            `json:"group"`
+	Name                        string            `json:"name"`
+	Disabled                    bool              `json:"disabled"`
+	PayloadType                 string            `json:"payloadType"`
+	Order                       int               `json:"order" default:"0"`
+	LabelsCleanupFirstCharacter bool              `json:"labelsCleanupFirstCharacter" default:"false"`
 }
 
 type Configuration struct {
@@ -345,7 +346,9 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					labels := prometheus.Labels{}
 					for kMatches, vMatches := range matches {
 						if kMatches[0] == matchTypeLabel {
-							kMatches = kMatches[1:]
+							if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+								kMatches = kMatches[1:]
+							}
 							labels[kMatches] = vMatches
 						}
 					}
@@ -401,7 +404,9 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							}
 							for kMatches, vMatches := range matches {
 								if kMatches[0] == matchTypeLabel {
-									kMatches = kMatches[1:]
+									if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+										kMatches = kMatches[1:]
+									}
 									labels[kMatches] = vMatches
 								}
 							}
@@ -450,7 +455,9 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 								labels := prometheus.Labels{}
 								for kMatches, vMatches := range matches {
 									if kMatches[0] == matchTypeLabel {
-										kMatches = kMatches[1:]
+										if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+											kMatches = kMatches[1:]
+										}
 										labels[kMatches] = vMatches
 									}
 								}
