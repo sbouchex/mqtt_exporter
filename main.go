@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -235,7 +236,13 @@ func parseValue(value interface{}) (float64, error) {
 	if len(partsMessage) > 1 {
 		svalue = partsMessage[1]
 	} else {
-		if _, ok := value.(float64); ok {
+		// Handles the case where the value is an array with one single entry
+		var typeInfo = reflect.ValueOf(value).Kind()
+		if typeInfo == reflect.Array || typeInfo == reflect.Slice {
+			value = value.([]interface{})[0]
+		}
+
+		if _, ok := (value.(float64)); ok {
 			svalue = fmt.Sprintf("%f", value)
 		}
 	}
