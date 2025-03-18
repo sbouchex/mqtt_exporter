@@ -3,6 +3,7 @@ module mqtt_exporter
 go 1.24
 
 require (
+	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/mcuadros/go-defaults v1.2.0
 	github.com/prometheus/client_golang v1.21.1
@@ -22,6 +23,7 @@ require (
 )
 
 require (
+	github.com/PaesslerAG/gval v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
@@ -33,7 +35,6 @@ require (
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/yalp/jsonpath v0.0.0-20180802001716-5cc68e5049a0
 	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
