@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PaesslerAG/jsonpath"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mcuadros/go-defaults"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
-	"github.com/yalp/jsonpath"
 
 	"github.com/spf13/pflag"
 	flag "github.com/spf13/pflag"
@@ -447,7 +447,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						if name == "" {
 							name = vname
 						}
-						var value, _ = jsonpath.Read(dataValue, vpath)
+						var value, _ = jsonpath.Get(vpath, dataValue)
 						if value != nil {
 							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", vk, stData, msg.Topic(), matches, name, value)
 
