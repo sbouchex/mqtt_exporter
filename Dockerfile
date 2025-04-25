@@ -1,5 +1,5 @@
 # Builder image
-FROM library/golang@sha256:7772cb5322baa875edd74705556d08f0eeca7b9c4b5367754ce3f2f00041ccee AS builder
+FROM library/golang@sha256:d9db32125db0c3a680cfb7a1afcaefb89c898a075ec148fdc2f0f646cc2ed509 AS builder
 WORKDIR /build
 ADD go.mod .
 COPY . .
