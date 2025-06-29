@@ -17,7 +17,7 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository }}
 
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
