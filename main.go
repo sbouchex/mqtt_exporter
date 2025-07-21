@@ -499,6 +499,12 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
 	log.Warnf("Connected")
+
+	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
+	for _, v := range configuration.Topics {
+		log.Infof("Subscribed to topic %s", v)
+		client.Subscribe(v, byte(config.Mqtt.Qos), messagePubHandler)
+	}
 }
 
 var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
@@ -581,12 +587,6 @@ func startExporter() {
 	})
 
 	log.Infof("Started %d filters", nbRunningFilters)
-
-	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
-	for _, v := range configuration.Topics {
-		log.Infof("Subscribed to topic %s", v)
-		client.Subscribe(v, byte(config.Mqtt.Qos), messagePubHandler)
-	}
 	log.Info("Waiting for messages")
 
 	http.ListenAndServe(config.Config.ListeningAddress, nil)
