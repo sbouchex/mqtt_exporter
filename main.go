@@ -498,8 +498,6 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 }
 
 var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-	log.Warnf("Connected")
-
 	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
 	for _, v := range configuration.Topics {
 		log.Infof("Subscribed to topic %s", v)
