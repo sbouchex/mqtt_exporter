@@ -1,6 +1,7 @@
 module mqtt_exporter
 
-go 1.24.4
+go 1.25
+toolchain go1.25.0
 
 require (
 	github.com/PaesslerAG/jsonpath v0.1.1
