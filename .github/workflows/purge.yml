@@ -15,7 +15,7 @@ jobs:
       id-token: write
     steps:
       - name: Delete old images
-        uses: snok/container-retention-policy@v3.0.1
+        uses: snok/container-retention-policy@v3.0.0
         with:
           account: user
           token: ${{ secrets.PAT }}
