@@ -81,3 +81,4 @@ This repository implements an MQTT Exporter written in Go. It receives metrics i
 - Only search the codebase if information here is incomplete or found to be in error.
 - For changes, prefer updating `main.go` and config files in the repo root.
 - For new features, follow the config-driven architecture and update documentation as needed.
+- Add the mention "Assisted by Copilot Coding Agent" in commit messages for changes made by the agent.
