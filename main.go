@@ -544,6 +544,10 @@ func startExporter() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "mqtt_exporter is started")
 	})
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 	http.Handle(config.Config.MetricsPath, promhttp.Handler())
 
 	opts := mqtt.NewClientOptions()
