@@ -1,5 +1,5 @@
 # Builder image
-FROM golang:1.26.4-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 WORKDIR /build
 ADD go.mod .
 COPY . .
