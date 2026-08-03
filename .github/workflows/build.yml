@@ -51,7 +51,7 @@ jobs:
             ./Dockerfile
       - name: Push To ghcr.io
         id: push
-        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # ratchet:redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v2
         with:
           tags: ${{ steps.build-image.outputs.tags }}
           username: ${{ github.actor }}
