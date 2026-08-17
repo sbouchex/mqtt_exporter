@@ -48,12 +48,21 @@ var (
 		},
 	)
 
+	processUptime = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "process_uptime_seconds",
+			Help: "Process uptime in seconds.",
+		},
+	)
+
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
 	collector     = &mqttCollector{}
 
 	reCache      = make(map[string]FilterCache)
 	reCacheIndex = []string{}
+
+	startTime time.Time
 )
 
 type FilterCache struct {
@@ -264,6 +273,11 @@ func parseValue(value interface{}) (float64, error) {
 // Collect implements prometheus.Collector.
 func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- lastPush
+	
+	// Update and collect process uptime
+	uptime := time.Since(startTime).Seconds()
+	processUptime.Set(uptime)
+	ch <- processUptime
 
 	c.mu.Lock()
 	samples := make([]*newmqttSample, 0, len(c.samples))
@@ -286,6 +300,7 @@ func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 // Describe implements prometheus.Collector.
 func (c mqttCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lastPush.Desc()
+	ch <- processUptime.Desc()
 }
 
 func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
@@ -514,6 +529,9 @@ func startExporter() {
 	if *verboseVar {
 		log.SetLevel(log.DebugLevel)
 	}
+
+	// Record the start time for uptime calculation
+	startTime = time.Now()
 
 	configurationFile, err := os.Open(config.Config.ConfigurationFile)
 	if err == nil {
