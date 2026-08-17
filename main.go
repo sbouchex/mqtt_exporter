@@ -231,7 +231,7 @@ func parseValueCollectd(value interface{}) ([]float64, error) {
 				if err == nil {
 					vals = append(vals, val)
 				} else {
-					return []float64{}, errors.New(fmt.Sprintf("INVALID VALUE %s", svalue))
+					return []float64{}, fmt.Errorf("INVALID VALUE %s", svalue)
 				}
 			}
 		}
@@ -273,7 +273,7 @@ func parseValue(value interface{}) (float64, error) {
 // Collect implements prometheus.Collector.
 func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- lastPush
-	
+
 	// Update and collect process uptime
 	uptime := time.Since(startTime).Seconds()
 	processUptime.Set(uptime)
