@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PaesslerAG/jsonpath"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mcuadros/go-defaults"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
-	"github.com/yalp/jsonpath"
 
 	"github.com/spf13/pflag"
 	flag "github.com/spf13/pflag"
@@ -48,12 +48,21 @@ var (
 		},
 	)
 
+	processUptime = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "process_uptime_seconds",
+			Help: "Process uptime in seconds.",
+		},
+	)
+
 	configuration = &Configuration{}
 	config        = ExporterConfiguration{}
 	collector     = &mqttCollector{}
 
 	reCache      = make(map[string]FilterCache)
 	reCacheIndex = []string{}
+
+	startTime time.Time
 )
 
 type FilterCache struct {
@@ -222,7 +231,7 @@ func parseValueCollectd(value interface{}) ([]float64, error) {
 				if err == nil {
 					vals = append(vals, val)
 				} else {
-					return []float64{}, errors.New(fmt.Sprintf("INVALID VALUE %s", svalue))
+					return []float64{}, fmt.Errorf("INVALID VALUE %s", svalue)
 				}
 			}
 		}
@@ -265,6 +274,11 @@ func parseValue(value interface{}) (float64, error) {
 func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- lastPush
 
+	// Update and collect process uptime
+	uptime := time.Since(startTime).Seconds()
+	processUptime.Set(uptime)
+	ch <- processUptime
+
 	c.mu.Lock()
 	samples := make([]*newmqttSample, 0, len(c.samples))
 	for _, sample := range c.samples {
@@ -286,6 +300,7 @@ func (c mqttCollector) Collect(ch chan<- prometheus.Metric) {
 // Describe implements prometheus.Collector.
 func (c mqttCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lastPush.Desc()
+	ch <- processUptime.Desc()
 }
 
 func getParams(regEx *regexp.Regexp, url string) (paramsMap map[string]string) {
@@ -335,39 +350,42 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				dataValue = stData
 
 				var pvalue, err = parseValue(dataValue)
-
-				var group = ""
-				for kMatches, vMatches := range matches {
-					if kMatches == matchTypeGroup {
-						group = vMatches
-					}
-				}
-				if group == "" {
-					group = configuration.Sensors[vk].Group
-				}
-
-				now := time.Now()
-				lastPush.Set(float64(now.UnixNano()) / 1e9)
-				metricType, err := metricType(configuration.Sensors[vk])
 				if err == nil {
-					labels := prometheus.Labels{}
+					var group = ""
 					for kMatches, vMatches := range matches {
-						if kMatches[0] == matchTypeLabel {
-							if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
-								kMatches = kMatches[1:]
-							}
-							labels[kMatches] = vMatches
+						if kMatches == matchTypeGroup {
+							group = vMatches
 						}
 					}
-					log.Debugf("Adding metric %s", metricKey(group, name, labels))
-					collector.ch <- &newmqttSample{
-						Id:      metricKey(group, name, labels),
-						Name:    metricName(group, name),
-						Labels:  labels,
-						Help:    metricHelp(group, name),
-						Value:   pvalue,
-						Type:    metricType,
-						Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+					if group == "" {
+						group = configuration.Sensors[vk].Group
+					}
+
+					now := time.Now()
+					lastPush.Set(float64(now.UnixNano()) / 1e9)
+					metricType, err := metricType(configuration.Sensors[vk])
+					if err == nil {
+						labels := prometheus.Labels{}
+						for kMatches, vMatches := range matches {
+							if kMatches[0] == matchTypeLabel {
+								if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+									kMatches = kMatches[1:]
+								}
+								labels[kMatches] = vMatches
+							}
+						}
+						log.Debugf("Adding metric %s", metricKey(group, name, labels))
+						collector.ch <- &newmqttSample{
+							Id:      metricKey(group, name, labels),
+							Name:    metricName(group, name),
+							Labels:  labels,
+							Help:    metricHelp(group, name),
+							Value:   pvalue,
+							Type:    metricType,
+							Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+						}
+					} else {
+						log.Error("parseValue failure: ", err)
 					}
 				} else {
 					log.Error("parseValue failure: ", err)
@@ -447,36 +465,39 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 						if name == "" {
 							name = vname
 						}
-						var value, _ = jsonpath.Read(dataValue, vpath)
+						var value, _ = jsonpath.Get(vpath, dataValue)
 						if value != nil {
 							log.Debugf("Matched filter %s - message: %s from topic: %s => %s - %s = %f", vk, stData, msg.Topic(), matches, name, value)
 
 							pvalue, err := parseValue(value)
-
-							var group = configuration.Sensors[vk].Group
-
-							now := time.Now()
-							lastPush.Set(float64(now.UnixNano()) / 1e9)
-							metricType, err := metricType(configuration.Sensors[vk])
 							if err == nil {
-								labels := prometheus.Labels{}
-								for kMatches, vMatches := range matches {
-									if kMatches[0] == matchTypeLabel {
-										if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
-											kMatches = kMatches[1:]
+								var group = configuration.Sensors[vk].Group
+
+								now := time.Now()
+								lastPush.Set(float64(now.UnixNano()) / 1e9)
+								metricType, err := metricType(configuration.Sensors[vk])
+								if err == nil {
+									labels := prometheus.Labels{}
+									for kMatches, vMatches := range matches {
+										if kMatches[0] == matchTypeLabel {
+											if configuration.Sensors[vk].LabelsCleanupFirstCharacter {
+												kMatches = kMatches[1:]
+											}
+											labels[kMatches] = vMatches
 										}
-										labels[kMatches] = vMatches
 									}
-								}
-								log.Debugf("Adding metric %s", metricKey(group, name, labels))
-								collector.ch <- &newmqttSample{
-									Id:      metricKey(group, name, labels),
-									Name:    metricName(group, name),
-									Labels:  labels,
-									Help:    metricHelp(group, name),
-									Value:   pvalue,
-									Type:    metricType,
-									Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+									log.Debugf("Adding metric %s", metricKey(group, name, labels))
+									collector.ch <- &newmqttSample{
+										Id:      metricKey(group, name, labels),
+										Name:    metricName(group, name),
+										Labels:  labels,
+										Help:    metricHelp(group, name),
+										Value:   pvalue,
+										Type:    metricType,
+										Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
+									}
+								} else {
+									log.Error("parseValue failure: ", err)
 								}
 							} else {
 								log.Error("parseValue failure: ", err)
@@ -492,7 +513,11 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 }
 
 var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-	log.Warnf("Connected")
+	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
+	for _, v := range configuration.Topics {
+		log.Infof("Subscribed to topic %s", v)
+		client.Subscribe(v, byte(config.Mqtt.Qos), messagePubHandler)
+	}
 }
 
 var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
@@ -504,6 +529,9 @@ func startExporter() {
 	if *verboseVar {
 		log.SetLevel(log.DebugLevel)
 	}
+
+	// Record the start time for uptime calculation
+	startTime = time.Now()
 
 	configurationFile, err := os.Open(config.Config.ConfigurationFile)
 	if err == nil {
@@ -533,6 +561,10 @@ func startExporter() {
 	log.Info("Listening on " + config.Config.ListeningAddress)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "mqtt_exporter is started")
+	})
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	})
 	http.Handle(config.Config.MetricsPath, promhttp.Handler())
 
@@ -575,12 +607,6 @@ func startExporter() {
 	})
 
 	log.Infof("Started %d filters", nbRunningFilters)
-
-	log.Infof("Connected to MQTT broker %s", config.Mqtt.Broker)
-	for _, v := range configuration.Topics {
-		log.Infof("Subscribed to topic %s", v)
-		client.Subscribe(v, byte(config.Mqtt.Qos), messagePubHandler)
-	}
 	log.Info("Waiting for messages")
 
 	http.ListenAndServe(config.Config.ListeningAddress, nil)
