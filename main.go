@@ -267,7 +267,7 @@ func parseValue(value interface{}) (float64, error) {
 	if err == nil {
 		return val, err
 	}
-	return -1.0, errors.New("INVALID VALUE")
+	return -1.0, errors.New("INVALID VALUE: " + svalue)
 }
 
 // Collect implements prometheus.Collector.
@@ -497,10 +497,10 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 										Expires: now.Add(time.Duration(configuration.PurgeDelay) * time.Second),
 									}
 								} else {
-									log.Error("parseValue failure: ", err)
+									log.Error("parseValue failure for ", name, ": ", err)
 								}
 							} else {
-								log.Error("parseValue failure: ", err)
+								log.Error("parseValue failure for ", name, ": ", err)
 							}
 						}
 					}
