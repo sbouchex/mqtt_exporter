@@ -48,10 +48,6 @@ jobs:
           archs: amd64, arm64
           dockerfiles: |
             ./Dockerfile
-      - name: Scan image
-        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # ratchet:anchore/scan-action@v7.4.2
-        with:
-          image: ${{ steps.meta.outputs.tags }}
       - name: Push To ghcr.io
         id: push
         uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v2
@@ -72,5 +68,9 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - name: Scan image
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # ratchet:anchore/scan-action@v7.4.2
+        with:
+          image: ${{ steps.meta.outputs.tags }}
       - name: Print image url
         run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
