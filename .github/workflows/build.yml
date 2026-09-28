@@ -1,4 +1,4 @@
-name: Build
+name: 🚀 Build
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up QEMU
@@ -34,14 +34,15 @@ jobs:
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
+        # Extract metadata (tags, labels) for Docker
+
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # ratchet:docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
       - name: Build image
         id: build-image
-        uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v3.1.0
         with:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -51,7 +52,7 @@ jobs:
             ./Dockerfile
       - name: Push To ghcr.io
         id: push
-        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v3.0.0
         with:
           tags: ${{ steps.build-image.outputs.tags }}
           username: ${{ github.repository_owner }}
@@ -69,5 +70,13 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Print image url
-        run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
+      - name: Scan image
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # ratchet:anchore/scan-action@v7.4.2
+        id: scan-docker
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          fail-build: false
+      - name: upload Anchore scan SARIF report
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # ratchet:github/codeql-action/upload-sarif@v4.38.2
+        with:
+          sarif_file: ${{ steps.scan-docker.outputs.sarif }}
