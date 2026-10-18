@@ -44,7 +44,7 @@ jobs:
           tags: |
             type=ref,event=branch,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=tag,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
       - name: Build image
         id: build-image
         uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v3.1.0
