@@ -41,6 +41,9 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # ratchet:docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
       - name: Build image
         id: build-image
         uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v3.1.0
