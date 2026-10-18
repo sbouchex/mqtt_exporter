@@ -55,6 +55,7 @@ jobs:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           archs: amd64, arm64
           dockerfiles: |
             ./Dockerfile
