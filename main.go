@@ -92,16 +92,21 @@ type Entity struct {
 	LastUpdated string `json:"last_updated"`
 }
 
+type ValuesMap struct {
+	Values map[string]string `json:"values"`
+}
+
 type Sensor struct {
-	Filter                      string            `json:"filter"`
-	Labels                      []string          `json:"labels"`
-	Values                      map[string]string `json:"values"`
-	Group                       string            `json:"group"`
-	Name                        string            `json:"name"`
-	Disabled                    bool              `json:"disabled"`
-	PayloadType                 string            `json:"payloadType"`
-	Order                       int               `json:"order" default:"0"`
-	LabelsCleanupFirstCharacter bool              `json:"labelsCleanupFirstCharacter" default:"false"`
+	Filter                      string               `json:"filter"`
+	Labels                      []string             `json:"labels"`
+	Values                      map[string]string    `json:"values"`
+	ValuesMap                   map[string]ValuesMap `json:"valuesMap"`
+	Group                       string               `json:"group"`
+	Name                        string               `json:"name"`
+	Disabled                    bool                 `json:"disabled"`
+	PayloadType                 string               `json:"payloadType"`
+	Order                       int                  `json:"order" default:"0"`
+	LabelsCleanupFirstCharacter bool                 `json:"labelsCleanupFirstCharacter" default:"false"`
 }
 
 type Configuration struct {
@@ -255,14 +260,17 @@ func parseValue(value interface{}) (float64, error) {
 			svalue = fmt.Sprintf("%f", value)
 		}
 	}
-	val, err := strconv.ParseFloat(svalue, 64)
 
-	if svalue == "false" || svalue == "OFF" {
-		return 0, err
+	// Handle some hardcoded values for boolean and string values
+	if svalue == "false" || svalue == "OFF" || svalue == "offline" {
+		return 0, nil
 	}
-	if svalue == "true" || svalue == "ON" {
-		return 1, err
+	if svalue == "true" || svalue == "ON" || svalue == "online" {
+		return 1, nil
 	}
+
+	// Parse the value as a float64
+	val, err := strconv.ParseFloat(svalue, 64)
 	log.Debugf("parseValue: %s - %s", svalue, err)
 	if err == nil {
 		return val, err
