@@ -85,6 +85,7 @@ jobs:
         with:
           image: ${{ steps.meta.outputs.tags }}
           fail-build: false
+          cache-db: true
       - name: upload Anchore scan SARIF report
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # ratchet:github/codeql-action/upload-sarif@v4.38.3
         with:
