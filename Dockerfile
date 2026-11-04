@@ -7,6 +7,7 @@ RUN go build -o mqtt_exporter main.go
 
 # Runner image
 FROM alpine
+RUN apk update && apk upgrade
 LABEL org.opencontainers.image.description="MQTT Exporter"
 LABEL org.opencontainers.image.source=https://github.com/sbouchex/mqtt_exporter
 LABEL org.opencontainers.image.licenses=Apache-2.0

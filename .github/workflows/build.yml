@@ -1,4 +1,4 @@
-name: Build
+name: 🚀 Build
 
 on:
   push:
@@ -25,42 +25,52 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # ratchet:docker/setup-qemu-action@v4.2.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # ratchet:docker/setup-qemu-action@v4.4.0
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
+        # Extract metadata (tags, labels) for Docker
+
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # ratchet:docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
+          flavor: |
+            latest=false
+          tags: |
+            type=ref,event=branch,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }},value=main
+            type=ref,event=tag,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=ref,event=pr,enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=latest,enable=false
       - name: Build image
         id: build-image
-        uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@719e3c40d8af9790c23eca13f7daa339f2867034 # ratchet:redhat-actions/buildah-build@v3.1.0
         with:
           image: ${{ env.IMAGE_NAME }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           archs: amd64, arm64
           dockerfiles: |
             ./Dockerfile
       - name: Push To ghcr.io
         id: push
-        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37 # ratchet:redhat-actions/push-to-registry@v3.0.0
         with:
           tags: ${{ steps.build-image.outputs.tags }}
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # ratchet:docker/login-action@v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # ratchet:docker/login-action@v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # ratchet:actions/attest-build-provenance@v4.2.2
@@ -69,5 +79,14 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Print image url
-        run: echo "Image pushed to ${{ steps.push.outputs.registry-paths }}"
+      - name: Scan image
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # ratchet:anchore/scan-action@v7.4.2
+        id: scan-docker
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          fail-build: false
+          cache-db: true
+      - name: upload Anchore scan SARIF report
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # ratchet:github/codeql-action/upload-sarif@v4.39.1
+        with:
+          sarif_file: ${{ steps.scan-docker.outputs.sarif }}

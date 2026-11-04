@@ -1,4 +1,4 @@
-name: Delete old container images
+name: ♲ Delete old container images
 on:
   schedule:
     - cron: "36 5 * * *"
