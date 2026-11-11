@@ -63,6 +63,8 @@ This exporter uses 2 configuration files:
 The exporter also exposes two push counters:
 - `<prefix>pushes_per_topic_total{topic="..."}` counts every MQTT message received on that topic.
 - `<prefix>pushes_per_sensor_total{sensor="..."}` counts every message matching a sensor definition (the key under `sensors`), whether or not its payload yields a metric.
+- `<prefix>bytes_per_topic_total{topic="..."}` counts the total MQTT payload bytes received on that topic.
+- `<prefix>bytes_per_sensor_total{sensor="..."}` counts the total payload bytes in messages matching that sensor definition.
 
 # Usage
 * Build the container from the source:

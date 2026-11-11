@@ -189,8 +189,10 @@ type mqttCollector struct {
 }
 
 type pushMetrics struct {
-	topic  *prometheus.CounterVec
-	sensor *prometheus.CounterVec
+	topic       *prometheus.CounterVec
+	sensor      *prometheus.CounterVec
+	topicBytes  *prometheus.CounterVec
+	sensorBytes *prometheus.CounterVec
 }
 
 func newPushMetrics(prefix string) *pushMetrics {
@@ -206,6 +208,20 @@ func newPushMetrics(prefix string) *pushMetrics {
 			prometheus.CounterOpts{
 				Name: prefix + "pushes_per_sensor_total",
 				Help: "Number of MQTT messages matched per sensor.",
+			},
+			[]string{"sensor"},
+		),
+		topicBytes: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: prefix + "bytes_per_topic_total",
+				Help: "Total MQTT payload bytes received per topic.",
+			},
+			[]string{"topic"},
+		),
+		sensorBytes: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: prefix + "bytes_per_sensor_total",
+				Help: "Total MQTT payload bytes matched per sensor.",
 			},
 			[]string{"sensor"},
 		),
@@ -357,9 +373,10 @@ var messagePubHandlerDefault mqtt.MessageHandler = func(client mqtt.Client, msg 
 }
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	pushMetricsSet.topic.WithLabelValues(msg.Topic()).Inc()
-
 	var data = msg.Payload()
+	pushMetricsSet.topic.WithLabelValues(msg.Topic()).Inc()
+	pushMetricsSet.topicBytes.WithLabelValues(msg.Topic()).Add(float64(len(data)))
+
 	var stData = string(data[:])
 	for _, vk := range reCacheIndex {
 		v := reCache[vk]
@@ -367,6 +384,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		matches := getParams(v.fre, msg.Topic())
 		if matches != nil {
 			pushMetricsSet.sensor.WithLabelValues(vk).Inc()
+			pushMetricsSet.sensorBytes.WithLabelValues(vk).Add(float64(len(data)))
 
 			var filter = configuration.Sensors[vk]
 
@@ -587,7 +605,7 @@ func startExporter() {
 	// Exporter without gometrics
 	collector = newmqttCollector()
 	pushMetricsSet = newPushMetrics(configuration.Prefix)
-	prometheus.MustRegister(pushMetricsSet.topic, pushMetricsSet.sensor)
+	prometheus.MustRegister(pushMetricsSet.topic, pushMetricsSet.sensor, pushMetricsSet.topicBytes, pushMetricsSet.sensorBytes)
 	prometheus.MustRegister(collector)
 	prometheus.Unregister(collectors.NewGoCollector())
 	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
