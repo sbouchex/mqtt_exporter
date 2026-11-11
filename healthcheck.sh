@@ -6,7 +6,7 @@ DEFAULT_PORT="9393"
 
 # Try to extract the port from the configuration file
 if [ -f "$CONFIG_FILE" ]; then
-    PORT=$(grep -o '"listeningAddress"[^,}]*' "$CONFIG_FILE" | grep -o '[0-9]\+' | tail -1)
+    PORT=$(grep -o '"ListeningAddress"[^,}]*' "$CONFIG_FILE" | grep -o '[0-9]\+' | tail -1)
     if [ -z "$PORT" ]; then
         PORT=$DEFAULT_PORT
     fi
