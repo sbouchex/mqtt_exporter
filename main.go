@@ -55,9 +55,10 @@ var (
 		},
 	)
 
-	configuration = &Configuration{}
-	config        = ExporterConfiguration{}
-	collector     = &mqttCollector{}
+	configuration  = &Configuration{}
+	config         = ExporterConfiguration{}
+	collector      = &mqttCollector{}
+	pushMetricsSet *pushMetrics
 
 	reCache      = make(map[string]FilterCache)
 	reCacheIndex = []string{}
@@ -185,6 +186,30 @@ type mqttCollector struct {
 	samples map[string]*newmqttSample
 	mu      *sync.Mutex
 	ch      chan *newmqttSample
+}
+
+type pushMetrics struct {
+	topic  *prometheus.CounterVec
+	sensor *prometheus.CounterVec
+}
+
+func newPushMetrics(prefix string) *pushMetrics {
+	return &pushMetrics{
+		topic: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: prefix + "pushes_per_topic_total",
+				Help: "Number of MQTT messages received per topic.",
+			},
+			[]string{"topic"},
+		),
+		sensor: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: prefix + "pushes_per_sensor_total",
+				Help: "Number of MQTT messages matched per sensor.",
+			},
+			[]string{"sensor"},
+		),
+	}
 }
 
 func newmqttCollector() *mqttCollector {
@@ -332,6 +357,8 @@ var messagePubHandlerDefault mqtt.MessageHandler = func(client mqtt.Client, msg 
 }
 
 var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	pushMetricsSet.topic.WithLabelValues(msg.Topic()).Inc()
+
 	var data = msg.Payload()
 	var stData = string(data[:])
 	for _, vk := range reCacheIndex {
@@ -339,6 +366,8 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		log.Debugf("Matching sensor %s", vk)
 		matches := getParams(v.fre, msg.Topic())
 		if matches != nil {
+			pushMetricsSet.sensor.WithLabelValues(vk).Inc()
+
 			var filter = configuration.Sensors[vk]
 
 			var err interface{}
@@ -557,6 +586,8 @@ func startExporter() {
 
 	// Exporter without gometrics
 	collector = newmqttCollector()
+	pushMetricsSet = newPushMetrics(configuration.Prefix)
+	prometheus.MustRegister(pushMetricsSet.topic, pushMetricsSet.sensor)
 	prometheus.MustRegister(collector)
 	prometheus.Unregister(collectors.NewGoCollector())
 	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))

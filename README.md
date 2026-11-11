@@ -60,6 +60,10 @@ This exporter uses 2 configuration files:
     - labels: Prometheus labels to add
     - values (*json payloadType only*): json path of the value to extract
 
+The exporter also exposes two push counters:
+- `<prefix>pushes_per_topic_total{topic="..."}` counts every MQTT message received on that topic.
+- `<prefix>pushes_per_sensor_total{sensor="..."}` counts every message matching a sensor definition (the key under `sensors`), whether or not its payload yields a metric.
+
 # Usage
 * Build the container from the source:
 ```
